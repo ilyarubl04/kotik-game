@@ -311,7 +311,7 @@ function groundColor(x){ return BIOMES[zone(x)].g; }
 let state='start';
 let camX=0, hue=0, score=0, lives=20;
 let worldItems=[], decorItems=[], particles=[], enemies=[], fireballs=[];
-let dragon=null, god=null, throwers=[], bombs=[], warriors=[], katanas=[], buttonCD=0, enemyTimer=0, bannerText='', bannerTimer=0;
+let dragon=null, god=null, throwers=[], bombs=[], warriors=[], katanas=[], ruins=[], zcats=[], buttonCD=0, enemyTimer=0, bannerText='', bannerTimer=0;
 let invuln=0, shake=0, dashCD=0;
 let timeOfDay=0, darkness=0, shield=false, superT=0;
 let inv={wood:0,brick:0}, built=[], stats={bossWins:0,bestDist:0};
@@ -363,6 +363,12 @@ function generateWorld(){
   // воины со стражей перед замком
   warriors=[]; katanas=[];
   for(let x=WORLD_W-2200;x<WORLD_W-360;x+=360+Math.random()*220)warriors.push({wx:x,throwT:1+Math.random()*2});
+  // заброшенные замки/церкви/дома по пути (НЕ у логова босса) — зомби-люди с гранатами + зомби-коты
+  ruins=[]; zcats=[];
+  const kinds=['castle','church','house'];
+  for(let x=SEG*1.0;x<WORLD_W-SEG*1.7;x+=SEG*0.7+Math.random()*SEG*0.5){
+    ruins.push({wx:x,kind:kinds[(Math.random()*kinds.length)|0],throwT:1+Math.random()*2,catT:2+Math.random()*2});
+  }
 }
 function newGame(){
   audio(); layout(); generateWorld();
@@ -371,14 +377,14 @@ function newGame(){
   buttonCD=0; enemyTimer=0; invuln=0; shake=0; dashCD=0;
   timeOfDay=0; darkness=0; shield=false; superT=0; musicStep=0; musicAcc=1; musicOn=true;
   inv={wood:0,brick:0}; built=[]; stats={bossWins:0,bestDist:0}; paused=false; saveTimer=5;
-  starsFound=new Array(BIOMES.length).fill(false); biomesSeen=[]; freezeT=0; riding=0; dashGhosts=[]; floats=[];
+  starsFound=new Array(BIOMES.length).fill(false); biomesSeen=[]; freezeT=0; riding=0; dashGhosts=[]; floats=[]; zcats=[];
   cat.wx=200; cat.y=0; cat.vy=0; cat.onGround=true; cat.jumps=0; cat.swat=0; cat.face=1; cat.dashT=0; cat.coyote=0;
   for(const b of skyButtons){ b.y=groundY-catSize*2.7; b.cd=0; }
 }
 function respawn(){
   state='explore'; cat.wx=200; cat.y=0; cat.vy=0; cat.onGround=true; cat.jumps=0; cat.dashT=0;
   lives=MAX_LIVES; dragon=null; god=null; fireballs=[]; enemies=[]; bombs=[]; katanas=[]; projectiles=[]; invuln=1.5;
-  riding=0; freezeT=0; dashGhosts=[]; floats=[];
+  riding=0; freezeT=0; dashGhosts=[]; floats=[]; zcats=[];
   bannerText='💀 Возрождение!'; bannerTimer=1.6; S.respawn();
 }
 
@@ -597,6 +603,25 @@ function updateExplore(dt){
   }
   bombs=bombs.filter(b=>!b.boom);
 
+  // заброшенные руины: зомби-люди кидают гранаты + выходят зомби-коты
+  for(const ru of ruins){
+    if(Math.abs(ru.wx-cat.wx)>W*0.55)continue;
+    ru.throwT-=dt;
+    if(ru.throwT<=0){ ru.throwT=1.7+Math.random()*1.5;
+      const dx=cat.wx-ru.wx, vx=Math.max(-300,Math.min(300,dx*0.85));
+      bombs.push({wx:ru.wx+(cat.wx>ru.wx?catSize*0.7:-catSize*0.7),y:groundY-catSize*1.0,vx,vy:-370,fuse:2.4}); S.fire();
+    }
+    ru.catT-=dt;
+    if(ru.catT<=0&&zcats.length<10){ ru.catT=3+Math.random()*3;
+      zcats.push({wx:ru.wx+(Math.random()<0.5?-1:1)*catSize*1.2,phase:Math.random()*6,sp:65+Math.random()*45}); S.zombie();
+    }
+  }
+  for(const zc of zcats){
+    zc.wx+=Math.sign(cat.wx-zc.wx)*zc.sp*dt; zc.phase+=dt*9;
+    if(Math.abs(zc.wx-cat.wx)<catSize*0.55){ zc.dead=true; loseLife(zc.wx); }
+  }
+  zcats=zcats.filter(zc=>!zc.dead);
+
   // воины-стража перед замком кидают катаны
   for(const wr of warriors){
     if(Math.abs(wr.wx-cat.wx)>W*0.55)continue;
@@ -674,6 +699,32 @@ function drawZombieFig(sx,phase){
   leg(sx+sz*0.16,hipY,sx+sz*0.16+Math.sin(phase+Math.PI)*amp,groundY-Math.max(0,Math.cos(phase+Math.PI))*amp*0.4);
   drawEmojiMid('🧟',sx,hipY-sz*0.32,sz*0.85);
 }
+function drawZombieCat(sx,phase){
+  const sz=catSize*0.85, legLen=sz*0.28, bodyW=sz*0.95, bodyH=sz*0.5, baseY=groundY, bodyCy=baseY-legLen-bodyH*0.5, amp=sz*0.13, hipY=baseY-legLen;
+  ctx.strokeStyle='#4e7d3a'; ctx.lineWidth=sz*0.12; ctx.lineCap='round';
+  leg(sx-bodyW*0.28,hipY,sx-bodyW*0.28+Math.sin(phase+Math.PI)*amp,baseY-Math.max(0,Math.cos(phase+Math.PI))*amp*0.4);
+  leg(sx+bodyW*0.28,hipY,sx+bodyW*0.28+Math.sin(phase)*amp,baseY-Math.max(0,Math.cos(phase))*amp*0.4);
+  ctx.strokeStyle='#6aa84f'; ctx.lineWidth=sz*0.12;
+  ctx.beginPath(); ctx.moveTo(sx-bodyW*0.45,bodyCy); ctx.quadraticCurveTo(sx-bodyW*0.82,bodyCy-sz*0.25,sx-bodyW*0.72,bodyCy-sz*0.45+Math.sin(phase)*3); ctx.stroke();
+  ctx.fillStyle='#6aa84f'; ellipse(sx,bodyCy,bodyW*0.5,bodyH*0.5); ctx.fill();
+  const hx=sx+bodyW*0.42, hy=bodyCy-sz*0.04, hr=sz*0.32;
+  ctx.fillStyle='#6aa84f';
+  ctx.beginPath(); ctx.moveTo(hx-hr*0.7,hy-hr*0.4); ctx.lineTo(hx-hr*0.2,hy-hr*1.25); ctx.lineTo(hx+hr*0.1,hy-hr*0.45); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(hx+hr*0.15,hy-hr*0.45); ctx.lineTo(hx+hr*0.65,hy-hr*1.25); ctx.lineTo(hx+hr*0.9,hy-hr*0.4); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.arc(hx,hy,hr,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#d6ff66'; ctx.beginPath(); ctx.arc(hx-hr*0.32,hy-hr*0.05,hr*0.18,0,7); ctx.fill(); ctx.beginPath(); ctx.arc(hx+hr*0.32,hy-hr*0.05,hr*0.18,0,7); ctx.fill();
+  ctx.fillStyle='#1c2a14'; ctx.beginPath(); ctx.arc(hx-hr*0.32,hy-hr*0.05,hr*0.08,0,7); ctx.fill(); ctx.beginPath(); ctx.arc(hx+hr*0.32,hy-hr*0.05,hr*0.08,0,7); ctx.fill();
+  ctx.strokeStyle='#1c2a14'; ctx.lineWidth=sz*0.05; ctx.beginPath(); ctx.arc(hx,hy+hr*0.4,hr*0.3,0.1,Math.PI-0.1); ctx.stroke();
+}
+function drawRuin(sx,kind){
+  const sz=catSize*1.9, e=kind==='church'?'⛪':kind==='house'?'🏚️':'🏰';
+  ctx.save();
+  drawEmojiMid(e,sx,groundY-sz*0.42,sz);
+  // налёт «заброшенности» — тёмно-зелёная дымка
+  ctx.globalAlpha=0.28; ctx.fillStyle='#1e3a1a'; ctx.beginPath(); ctx.ellipse(sx,groundY-sz*0.42,sz*0.5,sz*0.5,0,0,Math.PI*2); ctx.fill(); ctx.globalAlpha=1;
+  ctx.restore();
+  drawEmojiMid('🕸️',sx-sz*0.32,groundY-sz*0.72,sz*0.3);
+}
 
 function drawSky(){
   const biome=BIOMES[zone(cat.wx)]||BIOMES[0];
@@ -694,6 +745,12 @@ function drawWorld(){
   // земля (по зонам)
   for(let x=0;x<W;x+=80){ ctx.fillStyle=groundColor(x+camX); ctx.fillRect(x,groundY,82,H-groundY); }
   ctx.fillStyle='rgba(0,0,0,.18)'; ctx.fillRect(0,groundY,W,8);
+  // заброшенные замки/церкви/дома + зомби-человек с гранатой
+  for(const ru of ruins){ const sx=ru.wx-camX; if(sx<-catSize*2.2||sx>W+catSize*2.2)continue;
+    drawRuin(sx,ru.kind);
+    drawZombieFig(sx+catSize*0.9,(hue*0.05+ru.wx)%6.28);
+    if(Math.abs(ru.wx-cat.wx)<W*0.55&&ru.throwT<0.5)drawEmojiMid('💣',sx+catSize*1.2,groundY-catSize*0.95,catSize*0.45);
+  }
   // построенный замок (блоки игрока)
   drawBuilt();
   // призрак-подсказка: где встанет блок (если есть материалы)
@@ -740,6 +797,8 @@ function drawWorld(){
   for(const k of katanas){ const sx=k.wx-camX; if(sx<-50||sx>W+50)continue; ctx.save(); ctx.translate(sx,k.y); ctx.rotate((k.vx<0?Math.PI:0)+Math.sin(k.spin)*0.25); drawEmojiMid('🗡️',0,0,catSize*0.62); ctx.restore(); }
   // зомби (с ногами)
   for(const z of enemies){ const sx=z.wx-camX; if(sx<-80||sx>W+80)continue; drawZombieFig(sx,z.phase); }
+  // зомби-коты (из руин)
+  for(const zc of zcats){ const sx=zc.wx-camX; if(sx<-90||sx>W+90)continue; drawZombieCat(sx,zc.phase); }
   // дракон + огонь
   if(dragon){ const sx=dragon.wx-camX, sy=dragon.y+Math.sin(dragon.bob)*12; drawEmojiMid('🐉',sx,sy,catSize*2.0); drawEmojiMid('🔥',sx-catSize*0.7,sy+catSize*0.4,catSize*0.6); }
   for(const f of fireballs)drawEmojiMid('🔥',f.wx-camX,f.y,catSize*0.6);

@@ -1,5 +1,5 @@
 // Service worker — игра работает офлайн после первого запуска
-const CACHE = 'kotik-v1';
+const CACHE = 'kotik-v2';
 const ASSETS = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 
 self.addEventListener('install', e => {

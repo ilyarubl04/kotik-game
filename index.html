@@ -317,7 +317,8 @@ let timeOfDay=0, darkness=0, shield=false, superT=0;
 let inv={wood:0,brick:0}, built=[], stats={bossWins:0,bestDist:0};
 let paused=false, saveTimer=5, progressFrom='start';
 let freezeT=0, riding=0, dashGhosts=[], floats=[], starsFound=[], biomesSeen=[];
-const DASH_MAX=2.4, MAX_LIVES=20, CELL_K=0.9;
+let hunger=20, hungerDecay=0, starveT=0;
+const DASH_MAX=2.4, MAX_LIVES=20, MAX_HUNGER=20, CELL_K=0.9;
 const SAVE_KEY='kotik_save_v2';
 
 let groundY, catX, catSize, WALK;
@@ -378,13 +379,14 @@ function newGame(){
   timeOfDay=0; darkness=0; shield=false; superT=0; musicStep=0; musicAcc=1; musicOn=true;
   inv={wood:0,brick:0}; built=[]; stats={bossWins:0,bestDist:0}; paused=false; saveTimer=5;
   starsFound=new Array(BIOMES.length).fill(false); biomesSeen=[]; freezeT=0; riding=0; dashGhosts=[]; floats=[]; zcats=[];
+  hunger=MAX_HUNGER; hungerDecay=0; starveT=0;
   cat.wx=200; cat.y=0; cat.vy=0; cat.onGround=true; cat.jumps=0; cat.swat=0; cat.face=1; cat.dashT=0; cat.coyote=0;
   for(const b of skyButtons){ b.y=groundY-catSize*2.7; b.cd=0; }
 }
 function respawn(){
   state='explore'; cat.wx=200; cat.y=0; cat.vy=0; cat.onGround=true; cat.jumps=0; cat.dashT=0;
   lives=MAX_LIVES; dragon=null; god=null; fireballs=[]; enemies=[]; bombs=[]; katanas=[]; projectiles=[]; invuln=1.5;
-  riding=0; freezeT=0; dashGhosts=[]; floats=[]; zcats=[];
+  riding=0; freezeT=0; dashGhosts=[]; floats=[]; zcats=[]; hunger=MAX_HUNGER; hungerDecay=0; starveT=0;
   bannerText='💀 Возрождение!'; bannerTimer=1.6; S.respawn();
 }
 
@@ -486,6 +488,11 @@ function update(dt){
 
   if(state==='explore')updateExplore(dt);
   else if(state==='boss')updateBoss(dt);
+  // голод: медленно убывает; пустой — котик теряет здоровье
+  if(state==='explore'||state==='boss'){
+    hungerDecay+=dt; if(hungerDecay>=8){ hungerDecay=0; hunger=Math.max(0,hunger-1); }
+    if(hunger<=0){ starveT-=dt; if(starveT<=0){ starveT=4; bannerText='🍗 Покорми котика!'; bannerTimer=2; loseLife(); } }
+  }
   if(bannerTimer>0)bannerTimer-=dt;
   updateMusic(dt);
 }
@@ -511,7 +518,7 @@ function updateExplore(dt){
   for(const it of worldItems){
     if(it.type==='good'){ it.bob+=dt*4;
       if(!it.taken&&Math.hypot(it.wx-catCx,(it.y-it.size*0.5)-catCy)<(it.size+catSize)*0.4){
-        it.taken=true; score++; cat.swat=1; spawnP(it.wx-camX,it.y,'✨',10); addFloat(it.wx-camX,it.y-it.size*0.4,it.high?'+КЛАД!':'+1');
+        it.taken=true; score++; cat.swat=1; hunger=Math.min(MAX_HUNGER,hunger+4); spawnP(it.wx-camX,it.y,'✨',10); addFloat(it.wx-camX,it.y-it.size*0.4,it.high?'+КЛАД!':'+1');
         if(it.e==='🥛'){ shield=true; S.power(); } else if(it.e==='⭐'){ superT=4; S.power(); }
         else if(it.e==='🐟'){ lives=Math.min(MAX_LIVES,lives+1); S.power(); }
         else if(it.high){ score+=2; S.win(); } else S.collect();
@@ -882,6 +889,11 @@ function drawHUD(){
   ctx.fillStyle='rgba(0,0,0,.35)'; roundRect(lx,ly,lw,lh,lh/2); ctx.fill();
   ctx.fillStyle='#ff4d6d'; roundRect(lx,ly,lw*Math.max(0,lives/MAX_LIVES),lh,lh/2); ctx.fill();
   ctx.fillStyle='#fff'; ctx.textAlign='left'; ctx.textBaseline='middle'; ctx.font=`800 ${lh*0.8}px -apple-system,sans-serif,"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji"`; ctx.fillText('❤️ '+Math.max(0,lives),lx+8,ly+lh*0.5);
+  // шкала голода — под сердечками
+  const hy=ly+lh+6;
+  ctx.fillStyle='rgba(0,0,0,.35)'; roundRect(lx,hy,lw,lh,lh/2); ctx.fill();
+  ctx.fillStyle=hunger>4?'#e0922f':'#c0392b'; roundRect(lx,hy,lw*Math.max(0,hunger/MAX_HUNGER),lh,lh/2); ctx.fill();
+  ctx.fillStyle='#fff'; ctx.font=`800 ${lh*0.8}px -apple-system,sans-serif,"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji"`; ctx.fillText('🍗 '+Math.max(0,hunger),lx+8,hy+lh*0.5);
 
   ctx.fillStyle='#fff'; ctx.strokeStyle='rgba(0,0,0,.4)'; ctx.lineWidth=6; ctx.font=`900 ${Math.max(24,catSize*0.5)}px -apple-system,sans-serif,"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji"`; ctx.textAlign='right'; ctx.textBaseline='top';
   const t='🍴 '+score; ctx.strokeText(t,W-20,18); ctx.fillText(t,W-20,18);
